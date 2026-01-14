@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "upbeat-green-candy",
-    "slug": "snack-30be1cf7-f6d1-40fb-ae8e-e553d12f1fdc",
+    "name": "Solevault",
+    "slug": "solevault",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,14 +13,19 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.poppyseedla.solevault",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.poppyseedla.solevault"
     },
     "web": {
       "favicon": "./assets/favicon.png"
