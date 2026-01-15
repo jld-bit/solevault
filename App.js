@@ -20,9 +20,7 @@ export default function App() {
   const [sneakers, setSneakers] = useState([]);
   const [activeTab, setActiveTab] = useState("collection"); // collection | add | stats
   const [selectedBrand, setSelectedBrand] = useState(null); // null = cabinet list
-
-  // Search state (inside cabinet / all sneakers view)
-  const [searchQuery, setSearchQuery] = useState("");
+  const [cabinetSearch, setCabinetSearch] = useState(""); // search inside cabinet
 
   // Form fields
   const [brand, setBrand] = useState("");
@@ -58,99 +56,85 @@ export default function App() {
     setShowDatePicker(false);
   };
 
-  // ---- Photo helpers ----
-  const ensureLibraryPerm = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    return perm.granted;
-  };
-
-  const ensureCameraPerm = async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    return perm.granted;
+  // --------- IMAGE HELPERS ----------
+  const ensurePermissions = async () => {
+    const media = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const cam = await ImagePicker.requestCameraPermissionsAsync();
+    if (!media.granted) {
+      Alert.alert("Permission needed", "Please allow photo library access.");
+      return false;
+    }
+    if (!cam.granted) {
+      Alert.alert("Permission needed", "Please allow camera access.");
+      return false;
+    }
+    return true;
   };
 
   const pickFromLibrary = async () => {
-    const granted = await ensureLibraryPerm();
-    if (!granted) {
-      Alert.alert("Permission needed", "Please allow photo access to add pictures.");
+    try {
+      const ok = await ensurePermissions();
+      if (!ok) return;
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.85,
+        aspect: [1, 1],
+      });
+
+      if (!result.canceled && result.assets?.length) {
+        return result.assets[0].uri;
+      }
+      return null;
+    } catch {
+      Alert.alert("Error", "Could not open photo library.");
       return null;
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-      aspect: [1, 1],
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      return result.assets[0].uri;
-    }
-    return null;
   };
 
   const takeWithCamera = async () => {
-    const granted = await ensureCameraPerm();
-    if (!granted) {
-      Alert.alert("Permission needed", "Please allow camera access to take pictures.");
+    try {
+      const ok = await ensurePermissions();
+      if (!ok) return;
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.85,
+        aspect: [1, 1],
+      });
+
+      if (!result.canceled && result.assets?.length) {
+        return result.assets[0].uri;
+      }
+      return null;
+    } catch {
+      Alert.alert("Error", "Could not open camera.");
       return null;
     }
-
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.8,
-      aspect: [1, 1],
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      return result.assets[0].uri;
-    }
-    return null;
   };
 
-  const choosePhoto = async ({ onPicked }) => {
-    Alert.alert("Add Photo", "Choose how you want to add a photo:", [
+  const choosePhoto = async (onChosen) => {
+    Alert.alert("Add a photo", "Choose where to get the photo:", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Camera",
         onPress: async () => {
-          try {
-            const uri = await takeWithCamera();
-            if (uri) onPicked(uri);
-          } catch {
-            Alert.alert("Error", "Could not open camera.");
-          }
+          const uri = await takeWithCamera();
+          if (uri) onChosen(uri);
         },
       },
       {
         text: "Photo Library",
         onPress: async () => {
-          try {
-            const uri = await pickFromLibrary();
-            if (uri) onPicked(uri);
-          } catch {
-            Alert.alert("Error", "Could not open photo library.");
-          }
+          const uri = await pickFromLibrary();
+          if (uri) onChosen(uri);
         },
       },
     ]);
   };
 
-  // For ADD tab (new sneaker)
-  const pickImageForNewSneaker = async () => {
-    await choosePhoto({ onPicked: (uri) => setPhotoUri(uri) });
-  };
-
-  // For existing sneaker (edit photo later)
-  const pickImageForSneaker = async (id) => {
-    await choosePhoto({
-      onPicked: (uri) => {
-        setSneakers((prev) => prev.map((s) => (s.id === id ? { ...s, photoUri: uri } : s)));
-      },
-    });
-  };
-
-  // ---- Core actions ----
+  // --------- CRUD ----------
   const addSneaker = () => {
     const b = (brand || "").trim();
     const m = (model || "").trim();
@@ -175,7 +159,7 @@ export default function App() {
         colorway: (colorway || "").trim(),
         size: (size || "").trim(),
         condition: (condition || "").trim(),
-        purchaseDate: formatMMDDYYYY(purchaseDateObj), // MM-DD-YYYY
+        purchaseDate: formatMMDDYYYY(purchaseDateObj),
         purchasePrice: priceNum,
         wearCount: 0,
         photoUri: photoUri || null,
@@ -187,21 +171,33 @@ export default function App() {
     resetForm();
     setActiveTab("collection");
     setSelectedBrand(null);
-    setSearchQuery("");
+    setCabinetSearch("");
   };
 
   const wearSneaker = (id) => {
-    setSneakers((prev) => prev.map((s) => (s.id === id ? { ...s, wearCount: s.wearCount + 1 } : s)));
+    setSneakers((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, wearCount: (s.wearCount || 0) + 1 } : s))
+    );
   };
 
   const deleteSneaker = (id) => {
     Alert.alert("Delete sneaker?", "This will remove it from your vault.", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => setSneakers((prev) => prev.filter((s) => s.id !== id)) },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => setSneakers((prev) => prev.filter((s) => s.id !== id)),
+      },
     ]);
   };
 
-  // Cabinets from brands
+  const updateSneakerPhoto = (id) => {
+    choosePhoto((uri) => {
+      setSneakers((prev) => prev.map((s) => (s.id === id ? { ...s, photoUri: uri } : s)));
+    });
+  };
+
+  // --------- CABINETS ----------
   const cabinets = useMemo(() => {
     const map = new Map();
     for (const s of sneakers) {
@@ -215,25 +211,23 @@ export default function App() {
 
   const sneakersInSelectedCabinet = useMemo(() => {
     if (!selectedBrand) return [];
-    return sneakers.filter((s) => (s.brand || "").trim().toLowerCase() === selectedBrand.toLowerCase());
-  }, [sneakers, selectedBrand]);
+    const list =
+      selectedBrand === "__ALL__"
+        ? sneakers
+        : sneakers.filter(
+            (s) => (s.brand || "").trim().toLowerCase() === selectedBrand.toLowerCase()
+          );
 
-  const currentSneakerList = useMemo(() => {
-    if (!selectedBrand) return [];
-    return selectedBrand === "__ALL__" ? sneakers : sneakersInSelectedCabinet;
-  }, [selectedBrand, sneakers, sneakersInSelectedCabinet]);
+    const q = (cabinetSearch || "").trim().toLowerCase();
+    if (!q) return list;
 
-  // Filter list by search (brand/model/colorway)
-  const filteredSneakerList = useMemo(() => {
-    const q = (searchQuery || "").trim().toLowerCase();
-    if (!q) return currentSneakerList;
-    return currentSneakerList.filter((s) => {
-      const hay = `${s.brand || ""} ${s.model || ""} ${s.colorway || ""}`.toLowerCase();
+    return list.filter((s) => {
+      const hay = `${s.brand} ${s.model} ${s.colorway} ${s.size} ${s.condition}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [currentSneakerList, searchQuery]);
+  }, [sneakers, selectedBrand, cabinetSearch]);
 
-  // Stats
+  // --------- STATS ----------
   const totalPairs = sneakers.length;
   const totalWears = sneakers.reduce((sum, s) => sum + (s.wearCount || 0), 0);
   const totalSpent = sneakers.reduce((sum, s) => sum + (s.purchasePrice || 0), 0);
@@ -253,7 +247,7 @@ export default function App() {
           setActiveTab(tabKey);
           if (tabKey !== "collection") {
             setSelectedBrand(null);
-            setSearchQuery("");
+            setCabinetSearch("");
           }
         }}
       >
@@ -267,65 +261,6 @@ export default function App() {
     if (event?.type === "dismissed") return;
     if (selectedDate) setPurchaseDateObj(selectedDate);
   };
-
-  const goIntoCabinet = (brandName) => {
-    setSelectedBrand(brandName);
-    setSearchQuery("");
-  };
-
-  const goBackToCabinets = () => {
-    setSelectedBrand(null);
-    setSearchQuery("");
-  };
-
-  const SneakerCard = ({ item }) => (
-    <View style={styles.card}>
-      <View style={styles.cardRow}>
-        <TouchableOpacity
-          onPress={() => pickImageForSneaker(item.id)}
-          activeOpacity={0.85}
-          style={{ alignSelf: "flex-start" }}
-        >
-          {item.photoUri ? (
-            <Image source={{ uri: item.photoUri }} style={styles.thumb} />
-          ) : (
-            <View style={styles.thumbPlaceholder}>
-              <Text style={styles.thumbPlaceholderText}>Add Photo</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitle}>
-            {item.brand} {item.model}
-          </Text>
-
-          {!!item.colorway && <Text style={styles.cardSub}>Colorway: {item.colorway}</Text>}
-
-          <Text style={styles.cardSub}>
-            Size: {item.size || "—"} • Condition: {item.condition || "—"}
-          </Text>
-
-          <Text style={styles.cardSub}>
-            Bought: {item.purchaseDate || "—"} • Price: ${Number(item.purchasePrice || 0).toFixed(2)}
-          </Text>
-
-          <Text style={styles.cardSub}>Worn: {item.wearCount} times</Text>
-        </View>
-      </View>
-
-      {/* IMPORTANT: Removed middle Add Photo button here */}
-      <View style={styles.rowButtons}>
-        <TouchableOpacity style={styles.wearButton} onPress={() => wearSneaker(item.id)}>
-          <Text style={styles.wearText}>Worn Today</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.deleteButton} onPress={() => deleteSneaker(item.id)}>
-          <Text style={styles.deleteText}>Delete</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -348,10 +283,18 @@ export default function App() {
                 data={cabinets}
                 keyExtractor={(item) => item.brand}
                 ListEmptyComponent={
-                  <Text style={styles.empty}>No sneakers yet. Add your first pair in the ADD tab.</Text>
+                  <Text style={styles.empty}>
+                    No sneakers yet. Add your first pair in the ADD tab.
+                  </Text>
                 }
                 renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.cabinetCard} onPress={() => goIntoCabinet(item.brand)}>
+                  <TouchableOpacity
+                    style={styles.cabinetCard}
+                    onPress={() => {
+                      setSelectedBrand(item.brand);
+                      setCabinetSearch("");
+                    }}
+                  >
                     <View>
                       <Text style={styles.cabinetTitle}>{item.brand}</Text>
                       <Text style={styles.cabinetSub}>{item.count} pair(s)</Text>
@@ -362,7 +305,13 @@ export default function App() {
               />
 
               {sneakers.length > 0 && (
-                <TouchableOpacity style={styles.secondaryButton} onPress={() => goIntoCabinet("__ALL__")}>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={() => {
+                    setSelectedBrand("__ALL__");
+                    setCabinetSearch("");
+                  }}
+                >
                   <Text style={styles.secondaryButtonText}>View All Sneakers</Text>
                 </TouchableOpacity>
               )}
@@ -376,26 +325,95 @@ export default function App() {
                   {selectedBrand === "__ALL__" ? "All Sneakers" : `${selectedBrand} Cabinet`}
                 </Text>
 
-                <TouchableOpacity style={styles.backButton} onPress={goBackToCabinets}>
+                <TouchableOpacity
+                  style={styles.backButton}
+                  onPress={() => {
+                    setSelectedBrand(null);
+                    setCabinetSearch("");
+                  }}
+                >
                   <Text style={styles.backButtonText}>Back</Text>
                 </TouchableOpacity>
               </View>
 
+              {/* Search bar inside cabinet */}
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search shoes in this cabinet..."
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                autoCorrect={false}
+                value={cabinetSearch}
+                onChangeText={setCabinetSearch}
                 autoCapitalize="none"
-                returnKeyType="search"
               />
 
               <FlatList
-                data={filteredSneakerList}
+                data={sneakersInSelectedCabinet}
                 keyExtractor={(item) => item.id}
-                ListEmptyComponent={<Text style={styles.empty}>No matching shoes found.</Text>}
-                renderItem={({ item }) => <SneakerCard item={item} />}
+                ListEmptyComponent={
+                  <Text style={styles.empty}>No matching sneakers in this cabinet.</Text>
+                }
+                renderItem={({ item }) => (
+                  <View style={styles.card}>
+                    <View style={styles.cardRow}>
+                      {item.photoUri ? (
+                        <Image source={{ uri: item.photoUri }} style={styles.thumb} />
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.thumbPlaceholder}
+                          onPress={() => updateSneakerPhoto(item.id)}
+                        >
+                          <Text style={styles.thumbPlaceholderText}>Add Photo</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cardTitle}>
+                          {item.brand} {item.model}
+                        </Text>
+
+                        {!!item.colorway && (
+                          <Text style={styles.cardSub}>Colorway: {item.colorway}</Text>
+                        )}
+
+                        <Text style={styles.cardSub}>
+                          Size: {item.size || "—"} • Condition: {item.condition || "—"}
+                        </Text>
+
+                        <Text style={styles.cardSub}>
+                          Bought: {item.purchaseDate || "—"} • Price: $
+                          {Number(item.purchasePrice || 0).toFixed(2)}
+                        </Text>
+
+                        <Text style={styles.cardSub}>Worn: {item.wearCount} times</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.rowButtons}>
+                      <TouchableOpacity
+                        style={styles.wearButton}
+                        onPress={() => wearSneaker(item.id)}
+                      >
+                        <Text style={styles.wearText}>Worn Today</Text>
+                      </TouchableOpacity>
+
+                      {/* Only show Add Photo button if there isn't a photo yet */}
+                      {!item.photoUri ? null : (
+                        <TouchableOpacity
+                          style={styles.grayButton}
+                          onPress={() => updateSneakerPhoto(item.id)}
+                        >
+                          <Text style={styles.grayButtonText}>Change Photo</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={() => deleteSneaker(item.id)}
+                      >
+                        <Text style={styles.deleteText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               />
             </>
           )}
@@ -404,15 +422,28 @@ export default function App() {
 
       {/* ADD */}
       {activeTab === "add" && (
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <ScrollView contentContainerStyle={styles.form}>
             <Text style={styles.sectionTitle}>Add a Sneaker</Text>
 
             <Text style={styles.fieldLabel}>Brand (this becomes the Cabinet)</Text>
-            <TextInput style={styles.input} placeholder="Jordan, Nike, Adidas" value={brand} onChangeText={setBrand} />
+            <TextInput
+              style={styles.input}
+              placeholder="Jordan, Nike, Adidas"
+              value={brand}
+              onChangeText={setBrand}
+            />
 
             <Text style={styles.fieldLabel}>Model</Text>
-            <TextInput style={styles.input} placeholder="AJ1, Dunk, Yeezy" value={model} onChangeText={setModel} />
+            <TextInput
+              style={styles.input}
+              placeholder="AJ1, Dunk, Yeezy"
+              value={model}
+              onChangeText={setModel}
+            />
 
             <Text style={styles.fieldLabel}>Colorway (optional)</Text>
             <TextInput
@@ -465,8 +496,13 @@ export default function App() {
             />
 
             <Text style={styles.fieldLabel}>Picture (optional)</Text>
-            <TouchableOpacity style={styles.photoButton} onPress={pickImageForNewSneaker}>
-              <Text style={styles.photoButtonText}>{photoUri ? "Change Photo" : "Add Photo (Camera / Library)"}</Text>
+            <TouchableOpacity
+              style={styles.photoButton}
+              onPress={() => choosePhoto((uri) => setPhotoUri(uri))}
+            >
+              <Text style={styles.photoButtonText}>
+                {photoUri ? "Change Photo" : "Add Photo (Camera or Library)"}
+              </Text>
             </TouchableOpacity>
 
             {photoUri ? <Image source={{ uri: photoUri }} style={styles.preview} /> : null}
@@ -510,7 +546,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F5F5F5", padding: 16 },
   title: { fontSize: 28, fontWeight: "900", color: "#111111", marginBottom: 10 },
-
   tabs: { flexDirection: "row", marginBottom: 12 },
   tab: { flex: 1, padding: 10, marginHorizontal: 4, backgroundColor: "#E0E0E0", borderRadius: 10 },
   activeTab: { backgroundColor: "#111111" },
@@ -526,9 +561,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     padding: 14,
     borderRadius: 12,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#E0E0E0",
+    marginBottom: 12,
     fontWeight: "700",
   },
 
@@ -557,15 +592,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  thumbPlaceholderText: { color: "#777", fontWeight: "900", fontSize: 12, textAlign: "center" },
+  thumbPlaceholderText: { color: "#777", fontWeight: "900", fontSize: 12 },
 
   cardTitle: { fontSize: 18, fontWeight: "900", color: "#111111" },
   cardSub: { color: "#555555", marginTop: 4, fontWeight: "700" },
 
-  rowButtons: { flexDirection: "row", gap: 10, marginTop: 12 },
-  wearButton: { flex: 1, backgroundColor: "#111111", padding: 10, borderRadius: 10 },
+  rowButtons: { flexDirection: "row", gap: 10, marginTop: 12, alignItems: "center" },
+  wearButton: { flex: 1, backgroundColor: "#111111", padding: 10, borderRadius: 12 },
   wearText: { color: "#FFFFFF", textAlign: "center", fontWeight: "900" },
-  deleteButton: { paddingHorizontal: 14, justifyContent: "center", borderRadius: 10, backgroundColor: "#EFEFEF" },
+
+  grayButton: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: "#EFEFEF" },
+  grayButtonText: { color: "#111111", fontWeight: "900" },
+
+  deleteButton: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: "#EFEFEF" },
   deleteText: { color: "#111111", fontWeight: "900" },
 
   empty: { textAlign: "center", marginTop: 30, color: "#777777", fontWeight: "700" },
@@ -593,7 +632,7 @@ const styles = StyleSheet.create({
   },
   dateButtonText: { color: "#111111", fontWeight: "800" },
 
-  photoButton: { backgroundColor: "#EFEFEF", padding: 14, borderRadius: 10, alignItems: "center", marginBottom: 10 },
+  photoButton: { backgroundColor: "#EFEFEF", padding: 14, borderRadius: 12, alignItems: "center", marginBottom: 10 },
   photoButtonText: { color: "#111111", fontWeight: "900" },
   preview: { width: "100%", height: 220, borderRadius: 14, marginBottom: 12, backgroundColor: "#EEE" },
 

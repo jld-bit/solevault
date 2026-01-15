@@ -30,6 +30,11 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "owner": "poppyseedla"
+    "owner": "poppyseedla",
+    "extra": {
+      "eas": {
+        "projectId": "c75ff6d8-a3eb-4e12-acb7-165748a209a4"
+      }
+    }
   }
 }
